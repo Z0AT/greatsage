@@ -18,6 +18,30 @@
 - Desire Cache staging: `/dc-react/` (React pivot), `/dc-next/` (old SvelteKit) on 10.135.30.250
 - Home Assistant: PVE VM 101 on halepve
 
+## Cabinet (Multi-Agent Setup)
+
+| Agent | Role | Model | GitHub Repo |
+|---|---|---|---|
+| Great Sage (main) | Analytical intelligence | `ollama/glm-5.1:cloud` | Z0AT/greatsage |
+| Diablo | Coding/execution | `ollama/qwen3-coder-next:cloud` | Z0AT/diablo |
+| Geld | Infrastructure/DevOps | `ollama/gemma4:31b-cloud` | Z0AT/geld |
+| Souei | Research/monitoring | `ollama/glm-5.1:cloud` | Z0AT/souei |
+| Rigurd | Admin/housekeeping | `ollama/gemma4:31b-cloud` | Z0AT/rigurd |
+
+- All agent configs (SOUL.md, AGENTS.md, etc.) backed up to GitHub
+- Each agent has dedicated workspace, agentDir, and session store
+- Agent authorization via OpenClaw tools:profile and alsoAllow settings
+
+## GitHub Backups (2026-04-09)
+
+| Repo | Location |
+|---|---|
+| Z0AT/greatsage | Main workspace with all agent configs |
+| Z0AT/diablo | `~/.openclaw/workspace-diablo` |
+| Z0AT/geld | `~/.openclaw/workspace-geld` |
+| Z0AT/souei | `~/.openclaw/workspace-souei` |
+| Z0AT/rigurd | `~/.openclaw/workspace-rigurd` |
+
 ## Lessons Learned
 
 - Ollama cloud model provisioning requires `ollama signin` then `ollama run <model>:cloud` — cannot just list or configure them into OpenClaw without provisioning
