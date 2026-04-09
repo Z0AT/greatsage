@@ -582,7 +582,6 @@ h4 {
   --section-color: #7dd3fc;
   position: absolute;
   z-index: 30;
-  left: 50%;
   width: min(520px, calc(100vw - 48px));
   border-radius: 24px;
   border: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);

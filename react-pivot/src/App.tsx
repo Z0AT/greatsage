@@ -239,7 +239,8 @@ function DossierOverlay({
   onClose,
   onSelectRelated,
   placement,
-  mobile
+  mobile,
+  hoveredItemPos
 }: {
   item: DesireCacheItem;
   branch: string;
@@ -250,11 +251,41 @@ function DossierOverlay({
   onSelectRelated: (item: DesireCacheItem) => void;
   placement: DossierPlacement;
   mobile: boolean;
+  hoveredItemPos?: { x: number; y: number };
 }) {
+  // Smart positioning: open TOWARD center of screen
+  const getOverlayStyle = () => {
+    if (!hoveredItemPos) return {};
+    const { x, y } = hoveredItemPos;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const overlayWidth = 520;
+    const overlayHeight = 300;
+    const padding = 20;
+
+    // Horizontal: open TOWARD center
+    const center = viewportWidth / 2;
+    let left = x < center ? x + padding : x - overlayWidth - padding;
+    // Clamp to viewport
+    if (left + overlayWidth + padding > viewportWidth) left = viewportWidth - overlayWidth - padding;
+    if (left - padding < 0) left = padding;
+
+    // Vertical: show above or below based on space
+    const spaceAbove = y - padding;
+    const spaceBelow = viewportHeight - y - padding;
+    let top = spaceAbove > overlayHeight ? y - overlayHeight - padding : y + padding;
+    if (spaceBelow > overlayHeight && spaceBelow > spaceAbove) top = y + padding;
+
+    return { left: `${left}px`, top: `${top}px` };
+  };
+
   return (
     <div
       className={`dossier-pop dossier-pop--${mobile ? 'mobile' : placement} ${locked ? 'is-locked' : ''}`}
-      style={{ ['--section-color' as string]: sectionColor }}
+      style={{
+        ...(hoveredItemPos ? getOverlayStyle() : {}),
+        ['--section-color' as string]: sectionColor,
+      }}
     >
       <div className="dossier-pop__header">
         <div>
@@ -386,6 +417,7 @@ function InventoryItemNode({
           onSelectRelated={onSelect}
           placement={placement}
           mobile={isMobile}
+          hoveredItemPos={hoveredItemPos}
         />
       ) : null}
     </article>
@@ -402,6 +434,7 @@ function App() {
   const [sortMode, setSortMode] = useState<SortMode>('priority');
   const [viewMode, setViewMode] = useState<ViewMode>('dense');
   const isMobile = useIsMobile();
+  const [hoveredItemPos, setHoveredItemPos] = useState<{x: number, y: number} | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -606,8 +639,18 @@ function App() {
                   key={`signal-${item.id}`}
                   className={`signal-pill ${itemAccentClass(item)} ${interactiveItem?.id === item.id ? 'is-selected' : ''}`}
                   type="button"
-                  onMouseEnter={() => !isMobile && setHoveredItemId(item.id)}
-                  onMouseLeave={() => !isMobile && setHoveredItemId(null)}
+                  onMouseEnter={(e) => {
+                    if (!isMobile) {
+                      setHoveredItemId(item.id);
+                      setHoveredItemPos({ x: e.clientX, y: e.clientY });
+                    }
+                  }}
+                  onMouseLeave={() => {
+                    if (!isMobile) {
+                      setHoveredItemId(null);
+                      setHoveredItemPos(null);
+                    }
+                  }}
                   onClick={() => selectItem(item)}
                 >
                   <strong>{shortTitle(itemTitle(item), 24)}</strong>
