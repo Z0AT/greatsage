@@ -1,22 +1,62 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 import { buildApiUrl } from './config';
 import type { DesireCacheItem, DesireCachePayload } from './types';
 
-const SECTION_ALIASES: Record<string, string> = {
-  perks: 'Perk Injector',
-  comfort: 'Comfort Daemon',
-  style: 'Shell Mods',
-  setup: 'Rig Matrix'
+const SECTION_THEMES: Record<string, { label: string; kicker: string; glyph: string; color: string }> = {
+  perks: { label: 'Perk Injector', kicker: 'Augment lattice', glyph: 'PI', color: '#7dd3fc' },
+  comfort: { label: 'Comfort Daemon', kicker: 'Lifestyle shell', glyph: 'CD', color: '#4ade80' },
+  style: { label: 'Shell Mods', kicker: 'Body rig', glyph: 'SM', color: '#fb7185' },
+  setup: { label: 'Rig Matrix', kicker: 'Hardware field', glyph: 'RM', color: '#f59e0b' }
 };
 
-const SECTION_COLORS = ['#7dd3fc', '#c084fc', '#fb7185', '#4ade80', '#f59e0b', '#2dd4bf'];
+const FALLBACK_SECTION_COLORS = ['#7dd3fc', '#c084fc', '#fb7185', '#4ade80', '#f59e0b', '#2dd4bf'];
 
 type SortMode = 'priority' | 'price' | 'title';
-type ViewMode = 'compact' | 'featured';
+type ViewMode = 'dense' | 'compact';
 
-function sectionLabelFor(section: string) {
-  return SECTION_ALIASES[section.toLowerCase()] ?? section;
+function normalizeSection(section: string) {
+  return section?.trim() || 'Misc';
+}
+
+function humanizeLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function sectionMetaFor(section: string, index = 0) {
+  const normalized = normalizeSection(section);
+  const key = normalized.toLowerCase();
+  const theme = SECTION_THEMES[key];
+
+  if (theme) {
+    return {
+      id: normalized,
+      label: theme.label,
+      kicker: theme.kicker,
+      glyph: theme.glyph,
+      color: theme.color
+    };
+  }
+
+  const words = humanizeLabel(normalized);
+  const glyph = words
+    .split(' ')
+    .slice(0, 2)
+    .map((word) => word[0] ?? '')
+    .join('')
+    .toUpperCase();
+
+  return {
+    id: normalized,
+    label: words,
+    kicker: 'Archive sector',
+    glyph: glyph || 'DC',
+    color: FALLBACK_SECTION_COLORS[index % FALLBACK_SECTION_COLORS.length]
+  };
 }
 
 function branchLabelFor(item: DesireCacheItem) {
@@ -65,10 +105,6 @@ function priorityRank(item: DesireCacheItem) {
   if (item.sale || item.priority === 'SALE') return 1;
   if (item.priceChanged) return 2;
   return 3;
-}
-
-function normalizeSection(section: string) {
-  return section?.trim() || 'Misc';
 }
 
 function normalizeSearchValue(item: DesireCacheItem) {
@@ -128,7 +164,11 @@ function relatedItemsFor(selectedItem: DesireCacheItem | null, items: DesireCach
     (item) => item.id !== selectedItem.id && branchLabelFor(item) === branchLabelFor(selectedItem)
   );
 
-  return sortItems(sameBranch, 'priority').slice(0, 4);
+  return sortItems(sameBranch, 'priority').slice(0, 3);
+}
+
+function shortTitle(value: string, max = 44) {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 }
 
 function useIsMobile(breakpoint = 980) {
@@ -151,13 +191,12 @@ function App() {
   const [payload, setPayload] = useState<DesireCachePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<DesireCacheItem | null>(null);
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>('ALL');
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('priority');
-  const [viewMode, setViewMode] = useState<ViewMode>('featured');
-  const [mobileDossierOpen, setMobileDossierOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('dense');
   const isMobile = useIsMobile();
-  const mobileDossierRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -168,7 +207,6 @@ function App() {
         if (!response.ok) throw new Error(`API request failed with ${response.status}`);
         const nextPayload = (await response.json()) as DesireCachePayload;
         setPayload(nextPayload);
-        setSelectedItem(nextPayload.items[0] ?? null);
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : 'Unknown Desire Cache API failure');
@@ -180,12 +218,11 @@ function App() {
   }, []);
 
   const sections = useMemo(() => {
-    const base = payload?.sections?.length ? payload.sections : Array.from(new Set((payload?.items ?? []).map((item) => normalizeSection(item.section))));
-    return base.map((section, index) => ({
-      id: section,
-      label: sectionLabelFor(section),
-      color: SECTION_COLORS[index % SECTION_COLORS.length]
-    }));
+    const base = payload?.sections?.length
+      ? payload.sections
+      : Array.from(new Set((payload?.items ?? []).map((item) => normalizeSection(item.section))));
+
+    return base.map((section, index) => sectionMetaFor(section, index));
   }, [payload]);
 
   const filteredItems = useMemo(() => {
@@ -200,82 +237,104 @@ function App() {
   }, [payload, activeSection, query]);
 
   const groupedBranches = useMemo(() => groupByBranch(filteredItems, sortMode), [filteredItems, sortMode]);
-  const relatedItems = useMemo(() => relatedItemsFor(selectedItem, filteredItems), [selectedItem, filteredItems]);
+
+  useEffect(() => {
+    if (!filteredItems.length) {
+      setSelectedItem(null);
+      setHoveredItemId(null);
+      return;
+    }
+
+    const stillVisible = selectedItem && filteredItems.some((item) => item.id === selectedItem.id);
+    if (!stillVisible && !isMobile) setSelectedItem(filteredItems[0]);
+    if (!stillVisible && isMobile) setSelectedItem(null);
+  }, [filteredItems, selectedItem, isMobile]);
+
+  const interactiveItem = useMemo(() => {
+    if (hoveredItemId && !isMobile) {
+      return filteredItems.find((item) => item.id === hoveredItemId) ?? selectedItem;
+    }
+
+    return selectedItem;
+  }, [hoveredItemId, filteredItems, selectedItem, isMobile]);
 
   const activeSectionMeta = useMemo(() => {
     if (activeSection === 'ALL') {
       return {
+        id: 'ALL',
         label: 'All Sectors',
+        kicker: 'Archive overview',
+        glyph: 'DC',
         color: '#7dd3fc'
       };
     }
 
-    return sections.find((section) => section.id === activeSection) ?? {
-      label: sectionLabelFor(activeSection),
-      color: '#7dd3fc'
-    };
+    return sections.find((section) => section.id === activeSection) ?? sectionMetaFor(activeSection);
   }, [activeSection, sections]);
 
-  const featuredItems = useMemo(() => sortItems(filteredItems, 'priority').slice(0, 4), [filteredItems]);
+  const relatedItems = useMemo(() => relatedItemsFor(interactiveItem, filteredItems), [interactiveItem, filteredItems]);
+  const highlightedItems = useMemo(() => sortItems(filteredItems, 'priority').slice(0, 5), [filteredItems]);
 
   const selectItem = (item: DesireCacheItem) => {
-    setSelectedItem(item);
-    if (isMobile) {
-      setMobileDossierOpen(true);
-      setTimeout(() => {
-        mobileDossierRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 60);
-    }
+    setSelectedItem((current) => (current?.id === item.id ? null : item));
+    setHoveredItemId(item.id);
   };
 
   return (
     <main className="app-shell inventory-theme">
       <section className="hero-panel shop-hero">
-        <div className="shop-hero__portrait">
-          <div className="portrait-shell glow-shell">
-            <div className="portrait-mark pulse-mark">DC</div>
-            <div className="portrait-copy">
-              <p className="eyebrow">Desire Cache // Trade Deck</p>
-              <h1>Inventory-first browse pass</h1>
-              <p className="lede">
-                Denser item scan, stronger hierarchy, richer glow, and a dossier-led shopping flow that behaves properly on a phone.
-              </p>
-            </div>
+        <div className="shop-hero__copy">
+          <div className="hero-badge pulse-mark">DC</div>
+          <div>
+            <p className="eyebrow">Desire Cache // Raider Market Sweep</p>
+            <h1>Compact browse field, richer dossiers, cleaner trade lanes.</h1>
+            <p className="lede">
+              Inventory-first sweep with themed sectors, fast hover intel, and pop dossiers that keep the browsing field clear.
+            </p>
           </div>
         </div>
 
-        <div className="shop-hero__stats">
-          <span>{payload?.totalItems ?? 0} total</span>
-          <span>{filteredItems.length} visible</span>
-          <span>{groupedBranches.length} lanes</span>
-          <span>{error ? 'feed degraded' : 'feed nominal'}</span>
+        <div className="hero-readout panel-surface glow-panel">
+          <span>
+            <strong>{payload?.totalItems ?? 0}</strong>
+            total cache objects
+          </span>
+          <span>
+            <strong>{filteredItems.length}</strong>
+            visible in sweep
+          </span>
+          <span>
+            <strong>{groupedBranches.length}</strong>
+            category lanes
+          </span>
+          <span>
+            <strong>{error ? 'degraded' : 'nominal'}</strong>
+            feed status
+          </span>
         </div>
       </section>
 
-      {isMobile && selectedItem ? (
-        <button className="mobile-dossier-toggle panel-surface" type="button" onClick={() => setMobileDossierOpen((open) => !open)}>
+      <section className="section-lanes panel-surface glow-panel">
+        <div className="section-lanes__header">
           <div>
-            <p className="eyebrow">Selected item</p>
-            <strong>{itemTitle(selectedItem)}</strong>
+            <p className="eyebrow">Sector routing</p>
+            <h2>Trade lanes</h2>
           </div>
-          <span>{mobileDossierOpen ? 'Hide dossier' : 'Show dossier'}</span>
-        </button>
-      ) : null}
+          <span>{sections.length} themed sectors online</span>
+        </div>
 
-      <section className="shop-shell">
-        <aside className="section-rail panel-surface">
-          <div className="rail-header">
-            <p className="eyebrow">Sections</p>
-            <strong>Browse rails</strong>
-          </div>
-
+        <div className="section-lanes__track">
           <button
-            className={`rail-button ${activeSection === 'ALL' ? 'is-active' : ''}`}
-            onClick={() => setActiveSection('ALL')}
+            className={`sector-chip sector-chip--all ${activeSection === 'ALL' ? 'is-active' : ''}`}
             type="button"
+            onClick={() => setActiveSection('ALL')}
           >
-            <span>All Sectors</span>
-            <small>{payload?.totalItems ?? 0}</small>
+            <span className="sector-chip__glyph">DC</span>
+            <span className="sector-chip__copy">
+              <strong>All Sectors</strong>
+              <small>Archive overview</small>
+            </span>
+            <em>{payload?.totalItems ?? 0}</em>
           </button>
 
           {sections.map((section) => {
@@ -283,213 +342,191 @@ function App() {
             return (
               <button
                 key={section.id}
-                className={`rail-button ${activeSection === section.id ? 'is-active' : ''}`}
+                className={`sector-chip ${activeSection === section.id ? 'is-active' : ''}`}
                 style={{ ['--section-color' as string]: section.color }}
-                onClick={() => setActiveSection(section.id)}
                 type="button"
+                onClick={() => setActiveSection(section.id)}
               >
-                <span>{section.label}</span>
-                <small>{count}</small>
+                <span className="sector-chip__glyph">{section.glyph}</span>
+                <span className="sector-chip__copy">
+                  <strong>{section.label}</strong>
+                  <small>{section.kicker}</small>
+                </span>
+                <em>{count}</em>
               </button>
             );
           })}
-        </aside>
+        </div>
+      </section>
 
-        <section className="inventory-panel panel-surface">
-          <header className="inventory-toolbar">
-            <div>
-              <p className="eyebrow">{activeSectionMeta.label}</p>
-              <h2>Trade inventory</h2>
+      <section className="inventory-shell panel-surface">
+        <header className="inventory-toolbar">
+          <div>
+            <p className="eyebrow">{activeSectionMeta.kicker}</p>
+            <h2>{activeSectionMeta.label}</h2>
+          </div>
+
+          <div className="toolbar-controls">
+            <label className="search-shell">
+              <span>Search</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Item, source, branch, signal" />
+            </label>
+
+            <label className="select-shell">
+              <span>Sort</span>
+              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                <option value="priority">Priority</option>
+                <option value="price">Price</option>
+                <option value="title">Title</option>
+              </select>
+            </label>
+
+            <div className="mode-toggle glow-toggle">
+              <button className={viewMode === 'dense' ? 'is-active' : ''} onClick={() => setViewMode('dense')} type="button">
+                Dense
+              </button>
+              <button className={viewMode === 'compact' ? 'is-active' : ''} onClick={() => setViewMode('compact')} type="button">
+                Compact
+              </button>
             </div>
+          </div>
+        </header>
 
-            <div className="toolbar-controls">
-              <label className="search-shell">
-                <span>Search</span>
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an item, source, or lane" />
-              </label>
-
-              <label className="select-shell">
-                <span>Sort</span>
-                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                  <option value="priority">Priority</option>
-                  <option value="price">Price</option>
-                  <option value="title">Title</option>
-                </select>
-              </label>
-
-              <div className="mode-toggle glow-toggle">
-                <button className={viewMode === 'featured' ? 'is-active' : ''} onClick={() => setViewMode('featured')} type="button">
-                  Featured
+        {!error && highlightedItems.length ? (
+          <section className="signal-bar">
+            <p className="eyebrow">Signal pull</p>
+            <div className="signal-bar__items">
+              {highlightedItems.map((item) => (
+                <button
+                  key={`signal-${item.id}`}
+                  className={`signal-pill ${itemAccentClass(item)} ${interactiveItem?.id === item.id ? 'is-selected' : ''}`}
+                  type="button"
+                  onMouseEnter={() => !isMobile && setHoveredItemId(item.id)}
+                  onMouseLeave={() => !isMobile && setHoveredItemId(null)}
+                  onClick={() => selectItem(item)}
+                >
+                  <strong>{shortTitle(itemTitle(item), 24)}</strong>
+                  <span>{itemPrice(item)}</span>
                 </button>
-                <button className={viewMode === 'compact' ? 'is-active' : ''} onClick={() => setViewMode('compact')} type="button">
-                  Compact
-                </button>
-              </div>
+              ))}
             </div>
-          </header>
+          </section>
+        ) : null}
 
-          {error ? <div className="state-panel error">{error}</div> : null}
+        {error ? <div className="state-panel error">{error}</div> : null}
 
-          {!error && featuredItems.length ? (
-            <section className="featured-strip glow-panel">
-              <header className="featured-strip__header">
+        <div className="branch-stack">
+          {groupedBranches.map(([branch, items]) => (
+            <section key={branch} className="branch-block">
+              <header className="branch-block__header">
                 <div>
-                  <p className="lane-kicker">Priority pull</p>
-                  <h3>Signal items</h3>
+                  <p className="lane-kicker">Category lane</p>
+                  <h3>{branch}</h3>
                 </div>
-                <span>{featuredItems.length} highlighted</span>
+                <span>{items.length} items</span>
               </header>
-              <div className="featured-grid">
-                {featuredItems.map((item) => (
-                  <button
-                    key={`featured-${item.id}`}
-                    className={`featured-card ${itemAccentClass(item)} ${selectedItem?.id === item.id ? 'is-selected' : ''}`}
-                    onClick={() => selectItem(item)}
-                    onMouseEnter={() => !isMobile && setSelectedItem(item)}
-                    type="button"
-                  >
-                    <div className="featured-card__image glow-frame">
-                      {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
-                    </div>
-                    <div className="featured-card__body">
-                      <p>{itemTypeLabel(item)}</p>
-                      <h4>{itemTitle(item)}</h4>
-                      <strong>{itemPrice(item)}</strong>
-                    </div>
-                  </button>
-                ))}
+
+              <div className={`inventory-grid ${viewMode === 'compact' ? 'is-compact' : ''}`}>
+                {items.map((item) => {
+                  const isFocused = interactiveItem?.id === item.id;
+                  const isRelated = interactiveItem && interactiveItem.id !== item.id && branchLabelFor(interactiveItem) === branchLabelFor(item);
+
+                  return (
+                    <article
+                      key={item.id}
+                      className={`item-node ${itemAccentClass(item)} ${isFocused ? 'is-focused' : ''} ${isRelated ? 'is-related' : ''}`}
+                      onMouseEnter={() => !isMobile && setHoveredItemId(item.id)}
+                      onMouseLeave={() => !isMobile && setHoveredItemId(null)}
+                    >
+                      <button className="item-node__button" type="button" onClick={() => selectItem(item)}>
+                        <div className="item-node__image glow-frame">
+                          {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
+                        </div>
+
+                        <div className="item-node__body">
+                          <div className="item-node__head">
+                            <p>{itemTypeLabel(item)}</p>
+                            <span>{item.size || 'Field'}</span>
+                          </div>
+                          <h4>{shortTitle(itemTitle(item), viewMode === 'compact' ? 30 : 40)}</h4>
+                          <div className="item-node__footer">
+                            <strong>{itemPrice(item)}</strong>
+                            <span>{item.source || branch}</span>
+                          </div>
+                        </div>
+                      </button>
+
+                      {interactiveItem?.id === item.id ? (
+                        <div className={`dossier-pop ${selectedItem?.id === item.id ? 'is-locked' : ''}`} style={{ ['--section-color' as string]: activeSectionMeta.color }}>
+                          <div className="dossier-pop__header">
+                            <div>
+                              <p className="detail-kicker">{sectionMetaFor(item.section).label}</p>
+                              <strong>{branchLabelFor(item)}</strong>
+                            </div>
+                            <button className="dossier-close" type="button" onClick={() => setSelectedItem(null)}>
+                              ×
+                            </button>
+                          </div>
+
+                          <div className="dossier-pop__grid">
+                            {item.image ? <img className="dossier-pop__image glow-frame" src={item.image} alt="" /> : <div className="dossier-pop__image image-fallback large">NO PREVIEW</div>}
+
+                            <div className="dossier-pop__copy">
+                              <h4>{itemTitle(item)}</h4>
+                              <p>{itemDescription(item)}</p>
+
+                              <div className="dossier-tags">
+                                <span>{itemTypeLabel(item)}</span>
+                                <span>{item.source || 'Unknown source'}</span>
+                                <span>{statusLabel(item)}</span>
+                              </div>
+
+                              <dl>
+                                <div>
+                                  <dt>Price</dt>
+                                  <dd>{itemPrice(item)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Branch</dt>
+                                  <dd>{branchLabelFor(item)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Last scan</dt>
+                                  <dd>{item.lastFetchedAt || 'Unknown'}</dd>
+                                </div>
+                              </dl>
+
+                              {relatedItems.length ? (
+                                <div className="dossier-related">
+                                  <span>Related pulls</span>
+                                  <div className="dossier-related__list">
+                                    {relatedItems.map((related) => (
+                                      <button key={`related-${related.id}`} type="button" onClick={() => selectItem(related)}>
+                                        {shortTitle(itemTitle(related), 20)}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {item.url ? (
+                                <a className="action-link purchase-link pulse-link" href={item.url} target="_blank" rel="noreferrer">
+                                  Open item dossier
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             </section>
-          ) : null}
+          ))}
 
-          <div className="lane-stack">
-            {groupedBranches.map(([branch, items]) => (
-              <section key={branch} className="lane-panel">
-                <header className="lane-header">
-                  <div>
-                    <p className="lane-kicker">Lane</p>
-                    <h3>{branch}</h3>
-                  </div>
-                  <span>{items.length} items</span>
-                </header>
-
-                <div className={`inventory-grid ${viewMode === 'compact' ? 'is-compact' : ''}`}>
-                  {items.map((item) => (
-                    <button
-                      key={item.id}
-                      className={`item-card ${itemAccentClass(item)} ${selectedItem?.id === item.id ? 'is-selected' : ''}`}
-                      onClick={() => selectItem(item)}
-                      onMouseEnter={() => !isMobile && setSelectedItem(item)}
-                      type="button"
-                    >
-                      <div className="item-card__image glow-frame">
-                        {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
-                      </div>
-
-                      <div className="item-card__body">
-                        <div className="item-card__head">
-                          <p>{itemTypeLabel(item)}</p>
-                          <span>{item.size || branch}</span>
-                        </div>
-                        <h4>{itemTitle(item)}</h4>
-                        <div className="item-card__footer">
-                          <strong>{itemPrice(item)}</strong>
-                          <span>{item.source || 'Unknown source'}</span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
-
-            {!error && groupedBranches.length === 0 ? <div className="state-panel">No items match this filter state.</div> : null}
-          </div>
-        </section>
-
-        <aside
-          ref={mobileDossierRef}
-          className={`detail-panel panel-surface dossier-panel ${isMobile && mobileDossierOpen ? 'is-mobile-open' : ''}`}
-          style={{ ['--section-color' as string]: activeSectionMeta.color }}
-        >
-          {selectedItem ? (
-            <>
-              <div className="dossier-header">
-                <p className="detail-kicker">{sectionLabelFor(selectedItem.section || 'Misc')}</p>
-                <span>{branchLabelFor(selectedItem)}</span>
-              </div>
-
-              <h2>{itemTitle(selectedItem)}</h2>
-              <p className="detail-copy">{itemDescription(selectedItem)}</p>
-
-              {selectedItem.image ? <img className="detail-image glow-frame" src={selectedItem.image} alt="" /> : <div className="detail-image image-fallback large">NO PREVIEW</div>}
-
-              <div className="dossier-tags">
-                <span>{itemTypeLabel(selectedItem)}</span>
-                <span>{selectedItem.source || 'Unknown source'}</span>
-                <span>{selectedItem.size || branchLabelFor(selectedItem)}</span>
-              </div>
-
-              <dl>
-                <div>
-                  <dt>Price</dt>
-                  <dd>{itemPrice(selectedItem)}</dd>
-                </div>
-                <div>
-                  <dt>Source</dt>
-                  <dd>{selectedItem.source || 'Unknown'}</dd>
-                </div>
-                <div>
-                  <dt>Type</dt>
-                  <dd>{itemTypeLabel(selectedItem)}</dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>{statusLabel(selectedItem)}</dd>
-                </div>
-              </dl>
-
-              {relatedItems.length ? (
-                <section className="related-panel glow-panel">
-                  <header className="related-panel__header">
-                    <div>
-                      <p className="lane-kicker">Same lane</p>
-                      <strong>Related pulls</strong>
-                    </div>
-                    <span>{relatedItems.length} related</span>
-                  </header>
-                  <div className="related-list">
-                    {relatedItems.map((item) => (
-                      <button key={`related-${item.id}`} type="button" className="related-item" onClick={() => selectItem(item)}>
-                        <strong>{itemTitle(item)}</strong>
-                        <span>{itemPrice(item)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              <div className="purchase-shell">
-                <div className="purchase-shell__stepper glow-panel">
-                  <button type="button">−</button>
-                  <strong>x1</strong>
-                  <button type="button">+</button>
-                </div>
-                {selectedItem.url ? (
-                  <a className="action-link purchase-link pulse-link" href={selectedItem.url} target="_blank" rel="noreferrer">
-                    Open item dossier
-                  </a>
-                ) : (
-                  <button className="action-link purchase-link is-disabled" type="button">
-                    Dossier unavailable
-                  </button>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="state-panel">Select an item to inspect its dossier.</div>
-          )}
-        </aside>
+          {!error && groupedBranches.length === 0 ? <div className="state-panel">No items match this filter state.</div> : null}
+        </div>
       </section>
     </main>
   );
