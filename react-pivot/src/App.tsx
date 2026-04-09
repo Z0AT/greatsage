@@ -12,6 +12,9 @@ const SECTION_ALIASES: Record<string, string> = {
 
 const SECTION_COLORS = ['#7dd3fc', '#c084fc', '#fb7185', '#4ade80', '#f59e0b', '#2dd4bf'];
 
+type SortMode = 'priority' | 'price' | 'title';
+type ViewMode = 'compact' | 'featured';
+
 function sectionLabelFor(section: string) {
   return SECTION_ALIASES[section.toLowerCase()] ?? section;
 }
@@ -38,11 +41,30 @@ function itemPrice(item: DesireCacheItem) {
   return item.effectivePrice || item.manualPrice || item.lastSeenPrice || 'Unknown';
 }
 
+function priceValue(item: DesireCacheItem) {
+  const match = itemPrice(item).replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+}
+
 function itemTypeLabel(item: DesireCacheItem) {
   if (item.priority?.trim()) return item.priority;
   if (item.sale) return 'SALE';
   if (item.priceChanged) return 'SHIFT';
   return item.amazon ? 'AMAZON' : 'STASH';
+}
+
+function statusLabel(item: DesireCacheItem) {
+  if (item.priority === 'HOT') return 'High signal';
+  if (item.sale || item.priority === 'SALE') return 'Discount live';
+  if (item.priceChanged) return 'Price shifted';
+  return 'Nominal';
+}
+
+function priorityRank(item: DesireCacheItem) {
+  if (item.priority === 'HOT') return 0;
+  if (item.sale || item.priority === 'SALE') return 1;
+  if (item.priceChanged) return 2;
+  return 3;
 }
 
 function normalizeSection(section: string) {
@@ -70,7 +92,22 @@ function itemAccentClass(item: DesireCacheItem) {
   return 'is-normal';
 }
 
-function groupByBranch(items: DesireCacheItem[]) {
+function sortItems(items: DesireCacheItem[], sortMode: SortMode) {
+  const next = [...items];
+
+  next.sort((a, b) => {
+    if (sortMode === 'title') return itemTitle(a).localeCompare(itemTitle(b));
+    if (sortMode === 'price') return priceValue(a) - priceValue(b) || itemTitle(a).localeCompare(itemTitle(b));
+
+    const priorityDelta = priorityRank(a) - priorityRank(b);
+    if (priorityDelta !== 0) return priorityDelta;
+    return itemTitle(a).localeCompare(itemTitle(b));
+  });
+
+  return next;
+}
+
+function groupByBranch(items: DesireCacheItem[], sortMode: SortMode) {
   const map = new Map<string, DesireCacheItem[]>();
 
   for (const item of items) {
@@ -79,7 +116,19 @@ function groupByBranch(items: DesireCacheItem[]) {
     map.get(branch)!.push(item);
   }
 
-  return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  return Array.from(map.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([branch, branchItems]) => [branch, sortItems(branchItems, sortMode)] as const);
+}
+
+function relatedItemsFor(selectedItem: DesireCacheItem | null, items: DesireCacheItem[]) {
+  if (!selectedItem) return [];
+
+  const sameBranch = items.filter(
+    (item) => item.id !== selectedItem.id && branchLabelFor(item) === branchLabelFor(selectedItem)
+  );
+
+  return sortItems(sameBranch, 'priority').slice(0, 4);
 }
 
 function App() {
@@ -88,6 +137,8 @@ function App() {
   const [selectedItem, setSelectedItem] = useState<DesireCacheItem | null>(null);
   const [activeSection, setActiveSection] = useState<string>('ALL');
   const [query, setQuery] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('priority');
+  const [viewMode, setViewMode] = useState<ViewMode>('featured');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -129,7 +180,8 @@ function App() {
     });
   }, [payload, activeSection, query]);
 
-  const groupedBranches = useMemo(() => groupByBranch(filteredItems), [filteredItems]);
+  const groupedBranches = useMemo(() => groupByBranch(filteredItems, sortMode), [filteredItems, sortMode]);
+  const relatedItems = useMemo(() => relatedItemsFor(selectedItem, filteredItems), [selectedItem, filteredItems]);
 
   const activeSectionMeta = useMemo(() => {
     if (activeSection === 'ALL') {
@@ -145,6 +197,8 @@ function App() {
     };
   }, [activeSection, sections]);
 
+  const featuredItems = useMemo(() => sortItems(filteredItems, 'priority').slice(0, 4), [filteredItems]);
+
   return (
     <main className="app-shell inventory-theme">
       <section className="hero-panel shop-hero">
@@ -155,7 +209,7 @@ function App() {
               <p className="eyebrow">Desire Cache // Trade Deck</p>
               <h1>Inventory-first browse pass</h1>
               <p className="lede">
-                Dense item scan, strong dossier panel, and category framing first. Skill-tree DNA stays as subtle structure, not permanent clutter.
+                Dense item scan, stronger hierarchy, and a dossier-led shopping flow. The goal is less spreadsheet, more illicit game shop.
               </p>
             </div>
           </div>
@@ -209,13 +263,65 @@ function App() {
               <h2>Trade inventory</h2>
             </div>
 
-            <label className="search-shell">
-              <span>Search</span>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an item, source, or lane" />
-            </label>
+            <div className="toolbar-controls">
+              <label className="search-shell">
+                <span>Search</span>
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an item, source, or lane" />
+              </label>
+
+              <label className="select-shell">
+                <span>Sort</span>
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                  <option value="priority">Priority</option>
+                  <option value="price">Price</option>
+                  <option value="title">Title</option>
+                </select>
+              </label>
+
+              <div className="mode-toggle">
+                <button className={viewMode === 'featured' ? 'is-active' : ''} onClick={() => setViewMode('featured')} type="button">
+                  Featured
+                </button>
+                <button className={viewMode === 'compact' ? 'is-active' : ''} onClick={() => setViewMode('compact')} type="button">
+                  Compact
+                </button>
+              </div>
+            </div>
           </header>
 
           {error ? <div className="state-panel error">{error}</div> : null}
+
+          {!error && featuredItems.length ? (
+            <section className="featured-strip">
+              <header className="featured-strip__header">
+                <div>
+                  <p className="lane-kicker">Priority pull</p>
+                  <h3>Signal items</h3>
+                </div>
+                <span>{featuredItems.length} highlighted</span>
+              </header>
+              <div className="featured-grid">
+                {featuredItems.map((item) => (
+                  <button
+                    key={`featured-${item.id}`}
+                    className={`featured-card ${itemAccentClass(item)} ${selectedItem?.id === item.id ? 'is-selected' : ''}`}
+                    onClick={() => setSelectedItem(item)}
+                    onMouseEnter={() => setSelectedItem(item)}
+                    type="button"
+                  >
+                    <div className="featured-card__image">
+                      {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
+                    </div>
+                    <div className="featured-card__body">
+                      <p>{itemTypeLabel(item)}</p>
+                      <h4>{itemTitle(item)}</h4>
+                      <strong>{itemPrice(item)}</strong>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <div className="lane-stack">
             {groupedBranches.map(([branch, items]) => (
@@ -228,7 +334,7 @@ function App() {
                   <span>{items.length} items</span>
                 </header>
 
-                <div className="inventory-grid">
+                <div className={`inventory-grid ${viewMode === 'compact' ? 'is-compact' : ''}`}>
                   {items.map((item) => (
                     <button
                       key={item.id}
@@ -275,6 +381,12 @@ function App() {
 
               {selectedItem.image ? <img className="detail-image" src={selectedItem.image} alt="" /> : <div className="detail-image image-fallback large">NO PREVIEW</div>}
 
+              <div className="dossier-tags">
+                <span>{itemTypeLabel(selectedItem)}</span>
+                <span>{selectedItem.source || 'Unknown source'}</span>
+                <span>{selectedItem.size || branchLabelFor(selectedItem)}</span>
+              </div>
+
               <dl>
                 <div>
                   <dt>Price</dt>
@@ -290,9 +402,26 @@ function App() {
                 </div>
                 <div>
                   <dt>Status</dt>
-                  <dd>{selectedItem.priceChanged ? 'Price shifted' : selectedItem.sale ? 'Sale active' : 'Nominal'}</dd>
+                  <dd>{statusLabel(selectedItem)}</dd>
                 </div>
               </dl>
+
+              {relatedItems.length ? (
+                <section className="related-panel">
+                  <header className="related-panel__header">
+                    <p className="lane-kicker">Same lane</p>
+                    <span>{relatedItems.length} related</span>
+                  </header>
+                  <div className="related-list">
+                    {relatedItems.map((item) => (
+                      <button key={`related-${item.id}`} type="button" className="related-item" onClick={() => setSelectedItem(item)}>
+                        <strong>{itemTitle(item)}</strong>
+                        <span>{itemPrice(item)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <div className="purchase-shell">
                 <div className="purchase-shell__stepper">
