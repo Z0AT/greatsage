@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { buildApiUrl } from './config';
 import type { DesireCacheItem, DesireCachePayload } from './types';
@@ -14,6 +14,7 @@ const FALLBACK_SECTION_COLORS = ['#7dd3fc', '#c084fc', '#fb7185', '#4ade80', '#f
 
 type SortMode = 'priority' | 'price' | 'title';
 type ViewMode = 'dense' | 'compact';
+type DossierPlacement = 'above' | 'below' | 'center';
 
 function normalizeSection(section: string) {
   return section?.trim() || 'Misc';
@@ -185,6 +186,210 @@ function useIsMobile(breakpoint = 980) {
   }, [breakpoint]);
 
   return isMobile;
+}
+
+function usePositionedDossier(active: boolean, targetRef: React.RefObject<HTMLElement | null>) {
+  const [placement, setPlacement] = useState<DossierPlacement>('below');
+
+  useEffect(() => {
+    if (!active) return;
+
+    const updatePosition = () => {
+      if (!targetRef.current || typeof window === 'undefined') return;
+
+      const targetRect = targetRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const estimatedHeight = Math.min(360, viewportHeight * 0.6);
+      const margin = 18;
+      const spaceAbove = targetRect.top - margin;
+      const spaceBelow = viewportHeight - targetRect.bottom - margin;
+
+      if (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) {
+        setPlacement('below');
+        return;
+      }
+
+      if (spaceAbove >= estimatedHeight) {
+        setPlacement('above');
+        return;
+      }
+
+      setPlacement('center');
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, { passive: true });
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition);
+    };
+  }, [active, targetRef]);
+
+  return placement;
+}
+
+function DossierOverlay({
+  item,
+  branch,
+  sectionColor,
+  locked,
+  relatedItems,
+  onClose,
+  onSelectRelated,
+  placement,
+  mobile
+}: {
+  item: DesireCacheItem;
+  branch: string;
+  sectionColor: string;
+  locked: boolean;
+  relatedItems: DesireCacheItem[];
+  onClose: () => void;
+  onSelectRelated: (item: DesireCacheItem) => void;
+  placement: DossierPlacement;
+  mobile: boolean;
+}) {
+  return (
+    <div
+      className={`dossier-pop dossier-pop--${mobile ? 'mobile' : placement} ${locked ? 'is-locked' : ''}`}
+      style={{ ['--section-color' as string]: sectionColor }}
+    >
+      <div className="dossier-pop__header">
+        <div>
+          <p className="detail-kicker">{sectionMetaFor(item.section).label}</p>
+          <strong>{branch}</strong>
+        </div>
+        <button className="dossier-close" type="button" onClick={onClose}>
+          ×
+        </button>
+      </div>
+
+      <div className="dossier-pop__grid">
+        {item.image ? <img className="dossier-pop__image glow-frame" src={item.image} alt="" /> : <div className="dossier-pop__image image-fallback large">NO PREVIEW</div>}
+
+        <div className="dossier-pop__copy">
+          <h4>{itemTitle(item)}</h4>
+          <p>{itemDescription(item)}</p>
+
+          <div className="dossier-tags">
+            <span>{itemTypeLabel(item)}</span>
+            <span>{item.source || 'Unknown source'}</span>
+            <span>{statusLabel(item)}</span>
+          </div>
+
+          <dl>
+            <div>
+              <dt>Price</dt>
+              <dd>{itemPrice(item)}</dd>
+            </div>
+            <div>
+              <dt>Branch</dt>
+              <dd>{branch}</dd>
+            </div>
+            <div>
+              <dt>Last scan</dt>
+              <dd>{item.lastFetchedAt || 'Unknown'}</dd>
+            </div>
+          </dl>
+
+          {relatedItems.length ? (
+            <div className="dossier-related">
+              <span>Related pulls</span>
+              <div className="dossier-related__list">
+                {relatedItems.map((related) => (
+                  <button key={`related-${related.id}`} type="button" onClick={() => onSelectRelated(related)}>
+                    {shortTitle(itemTitle(related), 20)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {item.url ? (
+            <a className="action-link purchase-link pulse-link" href={item.url} target="_blank" rel="noreferrer">
+              Open item dossier
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InventoryItemNode({
+  item,
+  branch,
+  isFocused,
+  isRelated,
+  isMobile,
+  sectionColor,
+  viewMode,
+  selectedItem,
+  relatedItems,
+  interactiveItem,
+  onHover,
+  onLeave,
+  onSelect
+}: {
+  item: DesireCacheItem;
+  branch: string;
+  isFocused: boolean;
+  isRelated: boolean | null;
+  isMobile: boolean;
+  sectionColor: string;
+  viewMode: ViewMode;
+  selectedItem: DesireCacheItem | null;
+  relatedItems: DesireCacheItem[];
+  interactiveItem: DesireCacheItem | null;
+  onHover: (id: string) => void;
+  onLeave: () => void;
+  onSelect: (item: DesireCacheItem) => void;
+}) {
+  const itemRef = useRef<HTMLElement | null>(null);
+  const placement = usePositionedDossier(isFocused, itemRef);
+
+  return (
+    <article
+      ref={itemRef}
+      className={`item-node ${itemAccentClass(item)} ${isFocused ? 'is-focused' : ''} ${isRelated ? 'is-related' : ''}`}
+      onMouseEnter={() => !isMobile && onHover(item.id)}
+      onMouseLeave={() => !isMobile && onLeave()}
+    >
+      <button className="item-node__button" type="button" onClick={() => onSelect(item)}>
+        <div className="item-node__image glow-frame">
+          {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
+        </div>
+
+        <div className="item-node__body">
+          <div className="item-node__head">
+            <p>{itemTypeLabel(item)}</p>
+            <span>{item.size || 'Field'}</span>
+          </div>
+          <h4>{shortTitle(itemTitle(item), viewMode === 'compact' ? 30 : 40)}</h4>
+          <div className="item-node__footer">
+            <strong>{itemPrice(item)}</strong>
+            <span>{item.source || branch}</span>
+          </div>
+        </div>
+      </button>
+
+      {interactiveItem?.id === item.id ? (
+        <DossierOverlay
+          item={item}
+          branch={branch}
+          sectionColor={sectionColor}
+          locked={selectedItem?.id === item.id}
+          relatedItems={relatedItems}
+          onClose={() => onSelect(item)}
+          onSelectRelated={onSelect}
+          placement={placement}
+          mobile={isMobile}
+        />
+      ) : null}
+    </article>
+  );
 }
 
 function App() {
@@ -432,93 +637,22 @@ function App() {
                   const isRelated = interactiveItem && interactiveItem.id !== item.id && branchLabelFor(interactiveItem) === branchLabelFor(item);
 
                   return (
-                    <article
+                    <InventoryItemNode
                       key={item.id}
-                      className={`item-node ${itemAccentClass(item)} ${isFocused ? 'is-focused' : ''} ${isRelated ? 'is-related' : ''}`}
-                      onMouseEnter={() => !isMobile && setHoveredItemId(item.id)}
-                      onMouseLeave={() => !isMobile && setHoveredItemId(null)}
-                    >
-                      <button className="item-node__button" type="button" onClick={() => selectItem(item)}>
-                        <div className="item-node__image glow-frame">
-                          {item.image ? <img src={item.image} alt="" loading="lazy" /> : <div className="image-fallback">NO PREVIEW</div>}
-                        </div>
-
-                        <div className="item-node__body">
-                          <div className="item-node__head">
-                            <p>{itemTypeLabel(item)}</p>
-                            <span>{item.size || 'Field'}</span>
-                          </div>
-                          <h4>{shortTitle(itemTitle(item), viewMode === 'compact' ? 30 : 40)}</h4>
-                          <div className="item-node__footer">
-                            <strong>{itemPrice(item)}</strong>
-                            <span>{item.source || branch}</span>
-                          </div>
-                        </div>
-                      </button>
-
-                      {interactiveItem?.id === item.id ? (
-                        <div className={`dossier-pop ${selectedItem?.id === item.id ? 'is-locked' : ''}`} style={{ ['--section-color' as string]: activeSectionMeta.color }}>
-                          <div className="dossier-pop__header">
-                            <div>
-                              <p className="detail-kicker">{sectionMetaFor(item.section).label}</p>
-                              <strong>{branchLabelFor(item)}</strong>
-                            </div>
-                            <button className="dossier-close" type="button" onClick={() => setSelectedItem(null)}>
-                              ×
-                            </button>
-                          </div>
-
-                          <div className="dossier-pop__grid">
-                            {item.image ? <img className="dossier-pop__image glow-frame" src={item.image} alt="" /> : <div className="dossier-pop__image image-fallback large">NO PREVIEW</div>}
-
-                            <div className="dossier-pop__copy">
-                              <h4>{itemTitle(item)}</h4>
-                              <p>{itemDescription(item)}</p>
-
-                              <div className="dossier-tags">
-                                <span>{itemTypeLabel(item)}</span>
-                                <span>{item.source || 'Unknown source'}</span>
-                                <span>{statusLabel(item)}</span>
-                              </div>
-
-                              <dl>
-                                <div>
-                                  <dt>Price</dt>
-                                  <dd>{itemPrice(item)}</dd>
-                                </div>
-                                <div>
-                                  <dt>Branch</dt>
-                                  <dd>{branchLabelFor(item)}</dd>
-                                </div>
-                                <div>
-                                  <dt>Last scan</dt>
-                                  <dd>{item.lastFetchedAt || 'Unknown'}</dd>
-                                </div>
-                              </dl>
-
-                              {relatedItems.length ? (
-                                <div className="dossier-related">
-                                  <span>Related pulls</span>
-                                  <div className="dossier-related__list">
-                                    {relatedItems.map((related) => (
-                                      <button key={`related-${related.id}`} type="button" onClick={() => selectItem(related)}>
-                                        {shortTitle(itemTitle(related), 20)}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {item.url ? (
-                                <a className="action-link purchase-link pulse-link" href={item.url} target="_blank" rel="noreferrer">
-                                  Open item dossier
-                                </a>
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                    </article>
+                      item={item}
+                      branch={branch}
+                      isFocused={isFocused}
+                      isRelated={isRelated}
+                      isMobile={isMobile}
+                      sectionColor={activeSectionMeta.color}
+                      viewMode={viewMode}
+                      selectedItem={selectedItem}
+                      relatedItems={relatedItems}
+                      interactiveItem={interactiveItem}
+                      onHover={setHoveredItemId}
+                      onLeave={() => setHoveredItemId(null)}
+                      onSelect={selectItem}
+                    />
                   );
                 })}
               </div>
