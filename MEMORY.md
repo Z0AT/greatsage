@@ -14,6 +14,7 @@
 - Web search: Self-hosted SearXNG at PVE CT 100 (10.135.30.251:8080), wired into OpenClaw as `searxng` provider
 - OpenClaw gateway: local mode, loopback, port 18789
 - Channels: Matrix (encrypted, homeserver matrix.aualaohana.com), Mattermost (dmPolicy pairing)
+- Matrix rooms: Great Sage=`!hkyahtREOAtnlNxWkv`, Diablo=`!UhMnLEXMLLIkOMmEXD`, Souei=`!zqVnKIPHlTQnoBAstt` (all encrypted)
 - PVE host: halepve — CTs include 100 (searxng), 444 (rd), 777 (desire-cache), 888 (mattermost), 999 (fileserver), 1111 (cloudflared), 10101 (DISbot)
 - Desire Cache staging: `/dc-react/` (React pivot), `/dc-next/` (old SvelteKit) on 10.135.30.250
 - Home Assistant: PVE VM 101 on halepve
