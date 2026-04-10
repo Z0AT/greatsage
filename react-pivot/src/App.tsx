@@ -360,6 +360,7 @@ function InventoryItemNode({
   selectedItem,
   relatedItems,
   interactiveItem,
+  hoveredItemPos,
   onHover,
   onLeave,
   onSelect
@@ -374,6 +375,7 @@ function InventoryItemNode({
   selectedItem: DesireCacheItem | null;
   relatedItems: DesireCacheItem[];
   interactiveItem: DesireCacheItem | null;
+  hoveredItemPos?: { x: number; y: number } | undefined;
   onHover: (id: string) => void;
   onLeave: () => void;
   onSelect: (item: DesireCacheItem) => void;
@@ -692,6 +694,7 @@ function App() {
                       selectedItem={selectedItem}
                       relatedItems={relatedItems}
                       interactiveItem={interactiveItem}
+                      hoveredItemPos={hoveredItemPos ?? undefined}
                       onHover={setHoveredItemId}
                       onLeave={() => setHoveredItemId(null)}
                       onSelect={selectItem}
