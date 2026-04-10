@@ -1,0 +1,376 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/home/zoat/.openclaw/workspace",
+      "models": {
+        "openai-codex/gpt-5.4": {},
+        "ollama/gemma4:31b-cloud": {},
+        "ollama/glm-5.1:cloud": {},
+        "ollama/qwen3-coder-next:cloud": {}
+      },
+      "model": {
+        "primary": "ollama/glm-5.1:cloud",
+        "fallbacks": [
+          "ollama/qwen3-coder-next:cloud",
+          "openai-codex/gpt-5.4"
+        ]
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "model": "ollama/glm-5.1:cloud",
+        "tools": {
+          "profile": "full",
+          "alsoAllow": [
+            "agents_list",
+            "nodes",
+            "message",
+            "gateway"
+          ],
+          "elevated": {
+            "enabled": true,
+            "allowFrom": {
+              "webchat": [
+                "agent:main:main"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "diablo",
+        "name": "diablo",
+        "workspace": "/home/zoat/.openclaw/workspace-diablo",
+        "agentDir": "/home/zoat/.openclaw/agents/diablo/agent",
+        "model": {
+          "primary": "ollama/qwen3-coder-next:cloud",
+          "fallbacks": [
+            "ollama/glm-5.1:cloud",
+            "openai-codex/gpt-5.4"
+          ]
+        }
+      },
+      {
+        "id": "geld",
+        "name": "geld",
+        "workspace": "/home/zoat/.openclaw/workspace-geld",
+        "agentDir": "/home/zoat/.openclaw/agents/geld/agent",
+        "model": "ollama/gemma4:31b-cloud"
+      },
+      {
+        "id": "souei",
+        "name": "souei",
+        "workspace": "/home/zoat/.openclaw/workspace-souei",
+        "agentDir": "/home/zoat/.openclaw/agents/souei/agent",
+        "model": "ollama/glm-5.1:cloud"
+      },
+      {
+        "id": "rigurd",
+        "name": "rigurd",
+        "workspace": "/home/zoat/.openclaw/workspace-rigurd",
+        "agentDir": "/home/zoat/.openclaw/agents/rigurd/agent",
+        "model": "ollama/gemma4:31b-cloud"
+      },
+      {
+        "id": "cicil",
+        "name": "cicil",
+        "workspace": "/home/zoat/.openclaw/workspace-cicil",
+        "agentDir": "/home/zoat/.openclaw/agents/cicil/agent",
+        "model": "ollama/gemma4:31b-cloud"
+      }
+    ]
+  },
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "1b01b2d284bd25db8bbecfe3e5af780dd42d69930adbf821"
+    },
+    "port": 18789,
+    "bind": "loopback",
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "controlUi": {
+      "allowInsecureAuth": false,
+      "allowedOrigins": [
+        "https://greatsage.aualaohana.com"
+      ]
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "contacts.add",
+        "calendar.add",
+        "reminders.add",
+        "sms.send",
+        "sms.search"
+      ]
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding",
+    "sessions": {
+      "visibility": "all"
+    },
+    "agentToAgent": {
+      "enabled": true
+    },
+    "web": {
+      "search": {
+        "provider": "searxng"
+      }
+    },
+    "elevated": {
+      "enabled": true,
+      "allowFrom": {
+        "webchat": [
+          "agent:main:main"
+        ]
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openai-codex:zauala@gmail.com": {
+        "provider": "openai-codex",
+        "mode": "oauth",
+        "email": "zauala@gmail.com"
+      },
+      "openai-codex:zach.auala@vaeit.com": {
+        "provider": "openai-codex",
+        "mode": "oauth",
+        "email": "zach.auala@vaeit.com"
+      },
+      "openai-codex:zachary.auala@itpie.com": {
+        "provider": "openai-codex",
+        "mode": "oauth",
+        "email": "zachary.auala@itpie.com"
+      },
+      "ollama:default": {
+        "provider": "ollama",
+        "mode": "api_key"
+      }
+    }
+  },
+  "channels": {
+    "matrix": {
+      "enabled": true,
+      "homeserver": "https://matrix.aualaohana.com",
+      "accessToken": "syt_Z3JlYXRzYWdl_XnMtJCnhtLnqpicSiIBU_04bSY4",
+      "deviceName": "OpenClaw Gateway",
+      "encryption": true,
+      "groupPolicy": "allowlist",
+      "groups": {
+        "!hkyahtREOAtnlNxWkv:matrix.aualaohana.com": {
+          "enabled": true
+        },
+        "!diablo-encrypted:matrix.aualaohana.com": {
+          "enabled": true
+        },
+        "!souei-encrypted:matrix.aualaohana.com": {
+          "enabled": true
+        }
+      },
+      "threadBindings": {
+        "spawnAcpSessions": true
+      }
+    },
+    "mattermost": {
+      "enabled": true,
+      "botToken": "9cszk8ir5tbxz865fw9zyd5eho",
+      "baseUrl": "https://mattermost.aualaohana.com",
+      "dmPolicy": "pairing"
+    }
+  },
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "matrix",
+        "peer": {
+          "kind": "group",
+          "id": "!hkyahtREOAtnlNxWkv:matrix.aualaohana.com"
+        }
+      }
+    },
+    {
+      "agentId": "diablo",
+      "match": {
+        "channel": "matrix",
+        "peer": {
+          "kind": "group",
+          "id": "!diablo-encrypted:matrix.aualaohana.com"
+        }
+      }
+    },
+    {
+      "agentId": "souei",
+      "match": {
+        "channel": "matrix",
+        "peer": {
+          "kind": "group",
+          "id": "!souei-encrypted:matrix.aualaohana.com"
+        }
+      }
+    }
+  ],
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "boot-md": {
+          "enabled": true
+        },
+        "bootstrap-extra-files": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": true
+        },
+        "session-memory": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "wizard": {
+    "lastRunAt": "2026-04-09T16:40:48.428Z",
+    "lastRunVersion": "2026.4.5",
+    "lastRunCommand": "configure",
+    "lastRunMode": "local"
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434",
+        "api": "ollama",
+        "models": [
+          {
+            "id": "glm-5.1:cloud",
+            "name": "GLM-5.1 Cloud",
+            "reasoning": true,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 202752,
+            "maxTokens": 16384
+          },
+          {
+            "id": "qwen3-coder-next:cloud",
+            "name": "Qwen3 Coder Next Cloud",
+            "reasoning": false,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 262144,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gemma4:31b-cloud",
+            "name": "Gemma4 31B Cloud",
+            "reasoning": false,
+            "input": [
+              "text"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 262144,
+            "maxTokens": 16384
+          }
+        ]
+      }
+    },
+    "mode": "merge"
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.4.5",
+    "lastTouchedAt": "2026-04-09T23:09:58.852Z"
+  },
+  "plugins": {
+    "entries": {
+      "openai": {
+        "enabled": true
+      },
+      "acpx": {
+        "config": {
+          "permissionMode": "approve-all",
+          "nonInteractivePermissions": "deny"
+        },
+        "enabled": true
+      },
+      "memory-core": {
+        "config": {
+          "dreaming": {
+            "enabled": true
+          }
+        }
+      },
+      "ollama": {
+        "enabled": true
+      },
+      "searxng": {
+        "enabled": true,
+        "config": {
+          "webSearch": {
+            "baseUrl": "http://10.135.30.251:8080"
+          }
+        }
+      }
+    }
+  },
+  "skills": {
+    "entries": {
+      "apple-notes": {
+        "enabled": false
+      },
+      "apple-reminders": {
+        "enabled": false
+      },
+      "blogwatcher": {
+        "enabled": false
+      },
+      "bluebubbles": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "eightctl": {
+        "enabled": false
+      },
+      "gemini": {
+        "enabled": false
+      },
+      "gifgrep": {
+        "enabled": true
+      },
+      "wacli": {
+        "enabled": false
+      }
+    }
+  }
+}
