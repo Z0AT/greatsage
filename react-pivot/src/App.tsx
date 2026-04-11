@@ -14,7 +14,7 @@ const FALLBACK_SECTION_COLORS = ['#7dd3fc', '#c084fc', '#fb7185', '#4ade80', '#f
 
 type SortMode = 'priority' | 'price' | 'title';
 type ViewMode = 'dense' | 'compact';
-type DossierPlacement = 'above' | 'below' | 'center';
+type DossierPlacement = 'left' | 'right' | 'center';
 
 function normalizeSection(section: string) {
   return section?.trim() || 'Misc';
@@ -189,7 +189,7 @@ function useIsMobile(breakpoint = 980) {
 }
 
 function usePositionedDossier(active: boolean, targetRef: React.RefObject<HTMLElement | null>) {
-  const [placement, setPlacement] = useState<DossierPlacement>('below');
+  const [placement, setPlacement] = useState<DossierPlacement>('right');
 
   useEffect(() => {
     if (!active) return;
@@ -198,19 +198,19 @@ function usePositionedDossier(active: boolean, targetRef: React.RefObject<HTMLEl
       if (!targetRef.current || typeof window === 'undefined') return;
 
       const targetRect = targetRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const estimatedHeight = Math.min(360, viewportHeight * 0.6);
-      const margin = 18;
-      const spaceAbove = targetRect.top - margin;
-      const spaceBelow = viewportHeight - targetRect.bottom - margin;
+      const viewportWidth = window.innerWidth;
+      const estimatedWidth = Math.min(520, viewportWidth * 0.55);
+      const margin = 12;
+      const spaceRight = viewportWidth - targetRect.right - margin;
+      const spaceLeft = targetRect.left - margin;
 
-      if (spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove) {
-        setPlacement('below');
+      if (spaceRight >= estimatedWidth || spaceRight >= spaceLeft) {
+        setPlacement('right');
         return;
       }
 
-      if (spaceAbove >= estimatedHeight) {
-        setPlacement('above');
+      if (spaceLeft >= estimatedWidth) {
+        setPlacement('left');
         return;
       }
 
@@ -253,37 +253,47 @@ function DossierOverlay({
   mobile: boolean;
   hoveredItemPos?: { x: number; y: number };
 }) {
-  // Smart positioning: open TOWARD center of screen
+  // Left/right positioning based on available space
   const getOverlayStyle = () => {
     if (!hoveredItemPos) return {};
     const { x, y } = hoveredItemPos;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const overlayWidth = 520;
-    const overlayHeight = 300;
-    const padding = 20;
+    const overlayHeight = 340;
+    const padding = 12;
 
-    // Horizontal: open TOWARD center
-    const center = viewportWidth / 2;
-    let left = x < center ? x + padding : x - overlayWidth - padding;
-    // Clamp to viewport
+    const spaceRight = viewportWidth - x - padding;
+    const spaceLeft = x - padding;
+
+    // Horizontal: pop right if more space right, else left
+    let left: number;
+    if (spaceRight >= overlayWidth || spaceRight >= spaceLeft) {
+      left = x + padding;
+    } else {
+      left = x - overlayWidth - padding;
+    }
+    // Clamp
     if (left + overlayWidth + padding > viewportWidth) left = viewportWidth - overlayWidth - padding;
-    if (left - padding < 0) left = padding;
+    if (left < padding) left = padding;
 
-    // Vertical: show above or below based on space
-    const spaceAbove = y - padding;
-    const spaceBelow = viewportHeight - y - padding;
-    let top = spaceAbove > overlayHeight ? y - overlayHeight - padding : y + padding;
-    if (spaceBelow > overlayHeight && spaceBelow > spaceAbove) top = y + padding;
+    // Vertical: center on item Y, clamp to viewport
+    let top = y - overlayHeight / 2;
+    if (top + overlayHeight + padding > viewportHeight) top = viewportHeight - overlayHeight - padding;
+    if (top < padding) top = padding;
 
-    return { left: `${left}px`, top: `${top}px` };
+    // Return position relative to viewport (for fixed positioning)
+    return { left: `${left}px`, top: `${top}px`, position: 'fixed' as const, transform: 'none' as const };
   };
 
   return (
     <div
-      className={`dossier-pop dossier-pop--${mobile ? 'mobile' : placement} ${locked ? 'is-locked' : ''}`}
+      className={`dossier-pop ${hoveredItemPos ? 'dossier-pop--fixed' : ''} ${hoveredItemPos ? '' : `dossier-pop--${mobile ? 'mobile' : placement}`} ${locked ? 'is-locked' : ''}`}
       style={{
-        ...(hoveredItemPos ? getOverlayStyle() : {}),
+        ...(!hoveredItemPos ? {} : {
+          position: 'fixed',
+          ...getOverlayStyle(),
+        }),
         ['--section-color' as string]: sectionColor,
       }}
     >
@@ -376,18 +386,26 @@ function InventoryItemNode({
   relatedItems: DesireCacheItem[];
   interactiveItem: DesireCacheItem | null;
   hoveredItemPos?: { x: number; y: number } | undefined;
-  onHover: (id: string) => void;
+  onHover: (id: string, pos?: { x: number; y: number }) => void;
   onLeave: () => void;
   onSelect: (item: DesireCacheItem) => void;
 }) {
   const itemRef = useRef<HTMLElement | null>(null);
   const placement = usePositionedDossier(isFocused, itemRef);
 
+  // Get item center X/Y for hover positioning
+  const getitemCenterXY = () => {
+    const rect = itemRef.current?.getBoundingClientRect();
+    return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  };
   return (
     <article
       ref={itemRef}
       className={`item-node ${itemAccentClass(item)} ${isFocused ? 'is-focused' : ''} ${isRelated ? 'is-related' : ''}`}
-      onMouseEnter={() => !isMobile && onHover(item.id)}
+      onMouseEnter={() => !isMobile && (() => {
+        const itemCenterXY = getitemCenterXY();
+        onHover(item.id, itemCenterXY);
+      })()}
       onMouseLeave={() => !isMobile && onLeave()}
     >
       <button className="item-node__button" type="button" onClick={() => onSelect(item)}>
@@ -695,8 +713,8 @@ function App() {
                       relatedItems={relatedItems}
                       interactiveItem={interactiveItem}
                       hoveredItemPos={hoveredItemPos ?? undefined}
-                      onHover={setHoveredItemId}
-                      onLeave={() => setHoveredItemId(null)}
+                      onHover={(id, pos) => { setHoveredItemId(id); if (pos) setHoveredItemPos(pos); }}
+                      onLeave={() => { setHoveredItemId(null); setHoveredItemPos(null); }}
                       onSelect={selectItem}
                     />
                   );

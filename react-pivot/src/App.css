@@ -626,6 +626,30 @@ h4 {
   border-bottom: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);
 }
 
+.dossier-pop--left {
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.dossier-pop--left::before {
+  right: -8px;
+  border-top: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);
+  border-right: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);
+}
+
+.dossier-pop--right {
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.dossier-pop--right::before {
+  left: -8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);
+  border-left: 1px solid color-mix(in srgb, var(--section-color) 28%, white 8%);
+}
+
 .dossier-pop--center {
   position: fixed;
   left: 50%;
@@ -634,6 +658,15 @@ h4 {
   transform: translate(-50%, -50%);
 }
 
+.dossier-pop--fixed {
+  position: fixed;
+  z-index: 30;
+  transform: none;
+}
+
+.dossier-pop--fixed::before {
+  display: none;
+}
 .dossier-pop--center::before {
   display: none;
 }
@@ -827,6 +860,8 @@ h4 {
   .dossier-pop,
   .dossier-pop--below,
   .dossier-pop--above,
+  .dossier-pop--left,
+  .dossier-pop--right,
   .dossier-pop--center,
   .dossier-pop--mobile {
     position: fixed;
@@ -843,6 +878,8 @@ h4 {
   .dossier-pop::before,
   .dossier-pop--below::before,
   .dossier-pop--above::before,
+  .dossier-pop--left::before,
+  .dossier-pop--right::before,
   .dossier-pop--center::before,
   .dossier-pop--mobile::before {
     display: none;
